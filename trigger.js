@@ -114,6 +114,8 @@ function ChronicleHelper(apiKey=null)
 
   this.send = () =>
   {
+    const assetIdPrefix = `ExtraHop.RX:${System.uuid}`
+
     let myEvent = {
       'metadata': {
         'event_type': 'NETWORK_CONNECTION',
@@ -124,62 +126,61 @@ function ChronicleHelper(apiKey=null)
         'product_name': 'RevealX',
         'url_back_to_product': 'https://sensor.i.rx.tours'
       },
-      'network': this.network
+      'network': this.network,
+      'principal': {
+        'asset_id': `${assetIdPrefix}.${this.principal.asset.device.id}`,
+        'mac': this.principal.mac || null,
+        'port': this.principal.asset.port
+      },
+      'target': {
+        'asset_id': `${assetIdPrefix}.${this.target.asset.device.id}`,
+        'mac': this.target.mac || null,
+        'port': this.target.asset.port
+      }
     }
 
     switch (event)
     {
       case 'DHCP_RESPONSE':
-        myEvent.metadata.event_type = 'NETWORK_DHCP';
-        myEvent.principal = {
-          'asset_id': `EH:${this.principal.asset.device.id}`,
-          'mac': this.principal.mac || null,
-          'port': this.principal.asset.port
-        }
-        myEvent.target = {
-          'asset_id': `EH:${this.target.asset.device.id}`,
-          'mac': this.target.mac || null,
-          'port': this.target.asset.port
-        }
+        myEvent.metadata.event_type = 'NETWORK_DHCP'
         myEvent.network.dhcp = this.dhcp
         break;
 
       case 'DNS_RESPONSE':
-        myEvent.metadata.event_type = 'NETWORK_DNS';
-        myEvent.principal = {
-          'asset_id': `EH:${this.principal.asset.device.id}`,
-          'hostname': this.principal.name,
-          'mac': this.principal.mac || null,
-          'ip': this.principal.asset.ipaddr || null,
-          'port': this.principal.asset.port
-        }
-        myEvent.target = {
-          'asset_id': `EH:${this.target.asset.device.id}`,
-          'hostname': this.target.name,
-          'mac': this.target.mac || null,
-          'ip': this.target.asset.ipaddr || null,
-          'port': this.target.asset.port
-        }
+        myEvent.metadata.event_type = 'NETWORK_DNS'
         myEvent.network.dns = this.dns
+
+        if (this.principal.name)
+        {myEvent.principal.hostname = this.principal.name}
+
+        if (this.principal.asset.ipaddr)
+        {myEvent.principal.ip = this.principal.asset.ipaddr}
+        
+        if (this.target.name)
+        {myEvent.target.hostname = this.target.name}
+
+        if (this.target.asset.ipaddr)
+        {myEvent.target.ip = this.target.asset.ipaddr}
+
         break;
 
       case 'HTTP_RESPONSE':
-        myEvent.metadata.event_type = 'NETWORK_HTTP';
-        myEvent.principal = {
-          'asset_id': `EH:${this.principal.asset.device.id}`,
-          'hostname': this.principal.name,
-          'mac': this.principal.mac || null,
-          'ip': this.principal.asset.ipaddr || null,
-          'port': this.principal.asset.port
-        }
-        myEvent.target = {
-          'asset_id': `EH:${this.target.asset.device.id}`,
-          'mac': this.target.mac || null,
-          'ip': this.target.asset.ipaddr || null,
-          'port': this.target.asset.port,
-          'url': this.target.url
-        }
+        myEvent.metadata.event_type = 'NETWORK_HTTP'
         myEvent.network.http = this.http
+        myEvent.target.url = this.target.url
+
+        if (this.principal.name)
+        {myEvent.principal.hostname = this.principal.name}
+
+        if (this.principal.asset.ipaddr)
+        {myEvent.principal.ip = this.principal.asset.ipaddr}
+
+        if (this.target.name)
+        {myEvent.target.hostname = this.target.name}
+
+        if (this.target.asset.ipaddr)
+        {myEvent.target.ip = this.target.asset.ipaddr}
+
         break;
     }
 
