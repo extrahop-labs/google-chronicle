@@ -1,0 +1,14 @@
+{
+  "name": "chronicle",
+  "host": "malachiteingestion-pa.googleapis.com",
+  "port": 443,
+  "type": "https",
+  "multipleConnections": true,
+  "authentication": null,
+  "testConfiguration": {
+    "method": "GET",
+    "options": {
+      "path": "/v1/logtypes?key=YourApiKey"
+    }
+  }
+}
