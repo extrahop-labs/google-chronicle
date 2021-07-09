@@ -37,16 +37,30 @@ switch (event)
     }
     break;
 
+  case 'DNS_REQUEST':
+    if (DNS.opcodeNum > 0) {return}
+
+    chronicle.dns = {
+      'id': DNS.txId,
+      'response': false,
+      'opcode': DNS.opcodeNum,
+      'recursion_desired': DNS.isRecursionDesired,
+      'questions': [
+        {'name': DNS.qname, 'type': DNS.qtypeNum}
+      ]
+    }
+    break;
+
   case 'DNS_RESPONSE':
     if (DNS.opcodeNum > 0) {return}
 
     chronicle.dns = {
       'id': DNS.txId,
-      'opcode': DNS.opcodeNum,
       'response': true,
-      'response_code': DNS.errorNum || 0,
-      'recursion_available': DNS.isRecursionAvailable,
+      'opcode': DNS.opcodeNum,
       'authoritative': DNS.isAuthoritative,
+      'recursion_available': DNS.isRecursionAvailable,
+      'response_code': DNS.errorNum || 0,
       'truncated': DNS.isRspTruncated,
       'questions': [
         {'name': DNS.qname, 'type': DNS.qtypeNum}
@@ -146,6 +160,7 @@ function ChronicleHelper(apiKey=null)
         myEvent.network.dhcp = this.dhcp
         break;
 
+      case 'DNS_REQUEST':
       case 'DNS_RESPONSE':
         myEvent.metadata.event_type = 'NETWORK_DNS'
         myEvent.network.dns = this.dns
