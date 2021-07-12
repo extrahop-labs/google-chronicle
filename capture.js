@@ -13,7 +13,7 @@
  * 
  * The prefix for Session keys
  */const CHRONICLE_SESSION_PREFIX = 'chronicle'
- /* 
+ /*
 
 /**
  * RUNTIME **
@@ -26,41 +26,85 @@ switch (event)
 {
   case 'DHCP_REQUEST':
   case 'DHCP_RESPONSE':
-    chronicle.event = {'transaction_id': DHCP.txId}
+    chronicle.event = {
+      'opcode': null,
+      'type': (/^DHCP([A-Z]+)$/.exec(DHCP.msgType || '') || [0,0])[1],
+      'htype': 1,
+      'hlen': 6,
+      'hops': 0,
+      'transaction_id': DHCP.txId,
+      'seconds': 0,
+      'flags': null,
+      'ciaddr': '0.0.0.0',
+      'yiaddr': '0.0.0.0',
+      'siaddr': '0.0.0.0',
+      'giaddr': '0.0.0.0',
+      'chaddr': (DHCP.chaddr || '').toLowerCase() || null,
+      'client_hostname': null,
+      'client_identifier': null,
+      'file': null,
+      'lease_time_seconds': null,
+      'requested_address': null,
+      'sname': null,
+      'options': null
+    }
 
     switch (DHCP.msgType)
     {
-      case 'DHCPDISCOVER': chronicle.event.type = 'DISCOVER';break;
-      case 'DHCPOFFER': chronicle.event.type = 'OFFER';break;
-      case 'DHCPREQUEST': chronicle.event.type = 'REQUEST';break;
-      case 'DHCPDECLINE': chronicle.event.type = 'DECLINE';break;
-      case 'DHCPACK': chronicle.event.type = 'ACK';break;
-      case 'DHCPNAK': chronicle.event.type = 'NACK';break;
-      case 'DHCPRELEASE': chronicle.event.type = 'RELEASE';break;
-      case 'DHCPINFORM': chronicle.event.type = 'INFORM';break;
-      default: chronicle.event.type = 'UNKNOWN_MESSAGE_TYPE'
-    }
+      case 'DHCPDISCOVER':
+      case 'DHCPREQUEST':
+      case 'DHCPDECLINE':
+      case 'DHCPRELEASE':
+      case 'DHCPINFORM':
+        chronicle.event.opcode = 'BOOTREQUEST';
+        break;
 
-    if (DHCP.chaddr)
-    {
-      chronicle.event.chaddr = DHCP.chaddr.toLowerCase()
-      chronicle.event.hlen = 6
+      case 'DHCPOFFER':
+      case 'DHCPACK':
+      case 'DHCPNAK':
+        chronicle.event.opcode = 'BOOTREPLY';
+        break;
+
+      default:
+        chronicle.event.opcode = 'UNKNOWN_OPCODE'
+        chronicle.event.type = 'UNKNOWN_MESSAGE_TYPE'
     }
 
     if (DHCP.gwAddr) {chronicle.event.giaddr = `${DHCP.gwAddr}`}
-    if (DHCP.htype) {chronicle.event.htype = DHCP.htype}
 
-    if (event == 'DHCP_REQUEST' && DHCP.clientReqDelay)
-    {chronicle.event.seconds = DHCP.clientReqDelay}
+    if (event == 'DHCP_REQUEST')
+    {
+      chronicle.network.sent_bytes = 
+        chronicle.network.received_bytes = DHCP.reqL2Bytes
 
-    if (event == 'DHCP_RESPONSE' && DHCP.offeredAddr)
-    {chronicle.event.yiaddr = `${DHCP.offeredAddr}`}
+      chronicle.additional = {
+        'param_req_list': DHCP.paramReqList,
+        'vendor': DHCP.vendor
+      }
+
+      if (DHCP.clientReqDelay) {chronicle.event.seconds = DHCP.clientReqDelay}
+
+    }
+
+    if (event == 'DHCP_RESPONSE')
+    {
+      chronicle.network.sent_bytes = 
+        chronicle.network.received_bytes = DHCP.rspL2Bytes
+
+      if (DHCP.offeredAddr) {chronicle.event.yiaddr = `${DHCP.offeredAddr}`}
+    }
 
     let options = DHCP.options
     if (options.length)
     {
+      chronicle.event.options = []
       for (var option of options)
       {
+        chronicle.event.options.push({
+          'code': option.code,
+          'data': `${option.payload}`
+        })
+
         switch (option.code)
         {
           case 12:chronicle.event.client_hostname = `${option.payload}`;break;
@@ -72,37 +116,81 @@ switch (event)
         }
       }
     }
-    debug(`${Flow.id}:${JSON.stringify(chronicle.event)}`)
     break;
 
   case 'DNS_REQUEST':
-    if (DNS.opcodeNum > 0) {return}
-
     chronicle.event = {
       'id': DNS.txId,
       'response': false,
       'opcode': DNS.opcodeNum,
       'recursion_desired': DNS.isRecursionDesired,
-      'questions': [
-        {'name': DNS.qname, 'type': DNS.qtypeNum}
-      ]
+      'questions': null
+    }
+
+    switch (DNS.opcodeNum)
+    {
+      case 0:
+        chronicle.event.questions = [{
+          'name': DNS.qname,
+          'class': 1,
+          'type': DNS.qtypeNum
+        }]
+        break;
+
+      case 5:
+        chronicle.event.questions = [{
+          'name': DNS.zname,
+          'class': 1,
+          'type': DNS.ztypeNum
+        }]
+        break;
+    }
+
+    chronicle.additional = {
+      'is_checking_disabled': DNS.isCheckingDisabled,
+      'is_dga': DNS.isDGADomain
     }
     break;
 
   case 'DNS_RESPONSE':
-    if (DNS.opcodeNum > 0) {return}
-
     chronicle.event = {
+      'authoritative': DNS.isAuthoritative,
       'id': DNS.txId,
       'response': true,
       'opcode': DNS.opcodeNum,
-      'authoritative': DNS.isAuthoritative,
       'recursion_available': DNS.isRecursionAvailable,
       'response_code': DNS.errorNum || 0,
       'truncated': DNS.isRspTruncated,
-      'questions': [
-        {'name': DNS.qname, 'type': DNS.qtypeNum}
-      ]
+      'questions': null,
+      'answers': null,
+      'authority': null,
+      'additional': null
+    }
+
+    switch (DNS.opcodeNum)
+    {
+      case 0:
+        chronicle.event.questions = [{
+          'name': DNS.qname,
+          'class': 1,
+          'type': DNS.qtypeNum
+        }]
+        break;
+
+      case 5:
+        chronicle.event.questions = [{
+          'name': DNS.zname,
+          'class': 1,
+          'type': DNS.ztypeNum
+        }]
+        break;
+    }
+
+    chronicle.additional = {
+      'is_authentic': DNS.isAuthenticData,
+      'error': DNS.error || null,
+      'error_code': DNS.errorNum || null,
+      'is_dga': DNS.isDGADomain
     }
 
     let answers = DNS.answers
@@ -112,9 +200,10 @@ switch (event)
       for (var answer of answers)
       {
         chronicle.event.answers.push({
+          'class': 1,
           'data': `${answer.data}`,
           'name': answer.name,
-          'ttl': answer.ttl,
+          'ttl': answer.ttl || 0,
           'type': answer.typeNum
         })
       }
@@ -122,23 +211,34 @@ switch (event)
     break;
 
   case 'HTTP_RESPONSE':
-    const scheme = (HTTP.isEncrypted ? 'https' : 'http'),
-          host = HTTP.host.split(':')[0],
-          path = HTTP.path || '/',
-          query = (HTTP.query ? `?${HTTP.query}` : '')
-          
-    chronicle.target.url = `${scheme}://${host}${path}${query}`
-
-    if (scheme == 'https')
-    {
-      chronicle.network.application_protocol = 'HTTPS'
-    }
-
     chronicle.event = {
       'method': HTTP.method,
       'referral_url': HTTP.referer,
       'response_code': HTTP.statusCode,
       'user_agent': HTTP.userAgent
+    }
+
+    const scheme = (HTTP.isEncrypted ? 'https' : 'http'),
+          host = HTTP.host.split(':')[0],
+          path = HTTP.path || '/',
+          query = (HTTP.query ? `?${HTTP.query}` : '')
+
+    chronicle.target.url = `${scheme}://${host}${path}${query}`
+
+    if (scheme === 'https')
+    {chronicle.network.application_protocol = 'HTTPS'}
+
+    chronicle.network.sent_bytes = HTTP.reqL2Bytes
+    chronicle.network.received_bytes = HTTP.rspL2Bytes
+
+    chronicle.additional = {
+      'title': HTTP.title,
+      'is_encrypted': HTTP.isEncrypted,
+      'content_type': HTTP.contentType,
+      'headers_raw': HTTP.headersRaw,
+      'sqli': (HTTP.isSQLi ? HTTP.sqli : false),
+      'xss': (HTTP.isXSS ? HTTP.xss : false),
+      'query': HTTP.query
     }
     break;
 
@@ -150,13 +250,14 @@ chronicle.save()
 
 /**
 *  Google Chronicle Helper
-* --------------------------------------------------------------------------- >
+* ---------------------------------------------------------------------------- >
 */
 function ChronicleCaptureHelper()
 {
   this.principal = {}
   this.target = {}
   this.network = {}
+  this.additional = {}
   this.event = {}
 
   this.save = () =>
@@ -167,11 +268,25 @@ function ChronicleCaptureHelper()
             'expire': 30,
             'notify': true,
             'priority': Session.PRIORITY_HIGH
-          },
-          client = Flow.client,
-          clientIp = client.ipaddr,
-          server = Flow.server,
-          serverIp = server.ipaddr
+          }
+
+    let sender, receiver
+    switch (event)
+    {
+      // Flip sender/receiver for Chronicle where separate events do not exist 
+      // for REQUEST|RESPONSE and we need to trigger on RESPONSE
+      case 'HTTP_RESPONSE':
+        sender = Flow.receiver
+        receiver = Flow.sender
+        break;
+
+      default:
+        sender = Flow.sender
+        receiver = Flow.receiver
+    }
+
+    const senderIp = sender.ipaddr,
+          receiverIp = receiver.ipaddr
 
     let sessionData = {
       'type': event,
@@ -179,27 +294,28 @@ function ChronicleCaptureHelper()
       'flow': Flow.id,
       'ipproto': Flow.ipproto,
       'l7proto': Flow.l7proto,
-      'client': {
-        'device': client.device,
-        'ip': (!clientIp ? null : {
-          'addr': clientIp.toString(),
-          'external': clientIp.isExternal,
-          'broadcast': clientIp.isBroadcast
+      'sender': {
+        'device': sender.device,
+        'ip': (!senderIp ? null : {
+          'addr': senderIp.toString(),
+          'external': senderIp.isExternal,
+          'broadcast': senderIp.isBroadcast
         }),
-        'port': client.port
+        'port': sender.port
       },
-      'server': {
-        'device': server.device,
-        'ip': (!serverIp ? null : {
-          'addr': serverIp.toString(),
-          'external': serverIp.isExternal,
-          'broadcast': serverIp.isBroadcast
+      'receiver': {
+        'device': receiver.device,
+        'ip': (!receiverIp ? null : {
+          'addr': receiverIp.toString(),
+          'external': receiverIp.isExternal,
+          'broadcast': receiverIp.isBroadcast
         }),
-        'port': server.port
+        'port': receiver.port
       },
       'principal': this.principal,
       'target': this.target,
       'network': this.network,
+      'additional': this.additional,
       'event': this.event
     }
 

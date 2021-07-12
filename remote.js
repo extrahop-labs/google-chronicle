@@ -47,9 +47,8 @@ function ChronicleRemoteHelper()
 
   this.loadEvent = (data={}) =>
   {
-    const {principal,target,network} = this.setNouns(data),
+    const {principal,target,network,additional} = this.setNouns(data),
           url = this.setUrl(data.timestamp, data.type, data.flow),
-          assetIdPrefix = `ExtraHop.RX:${System.uuid}`,
           timestamp = new Date(Math.trunc(data.timestamp)).toISOString()
 
     let thisEvent = {
@@ -62,24 +61,35 @@ function ChronicleRemoteHelper()
         'product_name': 'RevealX',
         'url_back_to_product': url
       },
-      'network': network,
-      'principal': {
-        'asset_id': `${assetIdPrefix}.${principal.asset.device.id}`,
-        'mac': principal.mac || null,
-        'port': principal.asset.port
-      },
-      'target': {
-        'asset_id': `${assetIdPrefix}.${target.asset.device.id}`,
-        'mac': target.mac || null,
-        'port': target.asset.port
-      }
+      principal,
+      target,
+      network
     }
+
+    if (additional) {thisEvent.additional = additional}
 
     switch (data.type)
     {
       case 'DHCP_REQUEST':
+        if (principal.ip) {data.event.ciaddr = principal.ip}
       case 'DHCP_RESPONSE':
         thisEvent.metadata.event_type = 'NETWORK_DHCP'
+
+        if (data.event['client_identifier'])
+        {
+          data.event.client_identifier = this.Base64.encode(
+            data.event.client_identifier
+          )
+        }
+
+        if (data.event.options)
+        {
+          data.event.options = data.event.options.map(option => ({
+            'code': option.code,
+            'data': this.Base64.encode(option.data)
+          }))
+        }
+
         thisEvent.network.dhcp = data.event
         break;
 
@@ -87,38 +97,12 @@ function ChronicleRemoteHelper()
       case 'DNS_RESPONSE':
         thisEvent.metadata.event_type = 'NETWORK_DNS'
         thisEvent.network.dns = data.event
-
-        if (principal.name)
-        {thisEvent.principal.hostname = principal.name}
-
-        if (principal.asset.ip)
-        {thisEvent.principal.ip = principal.asset.ip.addr}
-
-        if (target.name)
-        {thisEvent.target.hostname = target.name}
-
-        if (target.asset.ip)
-        {thisEvent.target.ip = target.asset.ip.addr}
-
         break;
 
       case 'HTTP_RESPONSE':
         thisEvent.metadata.event_type = 'NETWORK_HTTP'
         thisEvent.network.http = data.event
-        thisEvent.target.url = target.url
-
-        if (principal.name)
-        {thisEvent.principal.hostname = principal.name}
-
-        if (principal.asset.ip)
-        {thisEvent.principal.ip = principal.asset.ip.addr}
-
-        if (target.name)
-        {thisEvent.target.hostname = target.name}
-
-        if (target.asset.ip)
-        {thisEvent.target.ip = target.asset.ip.addr}
-
+        if (thisEvent.target.url) {thisEvent.target.hostname = null}
         break;
     }
 
@@ -127,65 +111,47 @@ function ChronicleRemoteHelper()
 
   this.setNouns = (data={}) =>
   {
-    const client = data.client,
-          server = data.server
+    const assetIdPrefix = `ExtraHop.RevealX:${System.uuid}`
 
-    const internal = (
-      (!client.ip || !client.ip.external) && (!server.ip || !server.ip.external)
-    )
+    let principal = {
+          'asset_id': `${assetIdPrefix}.${data.sender.device.id}` || null,
+          'mac': (data.sender.device.hwaddr || '').toLowerCase() || null,
+          'ip': (data.sender.ip ? data.sender.ip.addr : null),
+          'port': data.sender.port,
+          'hostname': null
+        },
+        target = {
+          'asset_id': `${assetIdPrefix}.${data.receiver.device.id}` || null,
+          'mac': (data.receiver.device.hwaddr || '').toLowerCase() || null,
+          'ip': (data.receiver.ip ? data.receiver.ip.addr : null),
+          'port': data.receiver.port,
+          'hostname': null
+        },
+        network = {
+          'session_id': data.flow,
+          'ip_protocol': data.ipproto
+        },
+        additional = (
+          Object.keys(data.additional).length ? data.additional : null
+        )
 
-    let clientMAC = client.device.hwaddr,
-        serverMAC = server.device.hwaddr
-    if (clientMAC) {clientMAC = clientMAC.toLowerCase()}
-    if (serverMAC) {serverMAC = serverMAC.toLowerCase()}
+    const senderDNS = data.sender.device.dnsNames,
+          senderDHCP = data.sender.device.dhcpName,
+          senderNB = data.sender.device.netbiosName
 
-    let clientName = null,
-        clientDNS = client.device.dnsNames,
-        clientDHCP = client.device.dhcpName,
-        clientNB = client.device.netbiosName
-    if (clientDNS.length) {clientName = clientDNS[0]}
-    else if (clientDHCP) {clientName = clientDHCP}
-    else if (clientNB) {clientName = clientNB}
+    if (senderDNS.length) {principal.hostname = senderDNS[0]}
+    else if (senderDHCP) {principal.hostname = senderDHCP}
+    else if (senderNB) {principal.hostname = senderNB}
 
-    let serverName = null,
-        serverDNS = server.device.dnsNames,
-        serverDHCP = server.device.dhcpName,
-        serverNB = server.device.netbiosName
-    if (serverDNS.length) {serverName = serverDNS[0]}
-    else if (serverDHCP) {serverName = serverDHCP}
-    else if (serverNB) {serverName = serverNB}
+    const receiverDNS = data.receiver.device.dnsNames,
+          receiverDHCP = data.receiver.device.dhcpName,
+          receiverNB = data.receiver.device.netbiosName
 
-    let principal, target
-    if (internal || (server.ip && server.ip.external))
+    if (! target['url'])
     {
-      principal = {
-        'asset': client,
-        'name': clientName,
-        'mac': clientMAC
-      }
-      target = {
-        'asset': server,
-        'name': serverName,
-        'mac': serverMAC
-      }
-    }
-    else
-    {
-      principal = {
-        'asset': server,
-        'name': serverName,
-        'mac': serverMAC
-      }
-      target = {
-        'asset': client,
-        'name': clientName,
-        'mac': clientMAC
-      }
-    }
-
-    let network = {
-      'session_id': data.flow,
-      'ip_protocol': data.ipproto
+      if (receiverDNS.length) {target.hostname = receiverDNS[0]}
+      else if (receiverDHCP) {target.hostname = receiverDHCP}
+      else if (receiverNB) {target.hostname = receiverNB}
     }
 
     const l7proto = data.l7proto.split(':')[0]
@@ -223,15 +189,27 @@ function ChronicleRemoteHelper()
       // default: network.application_protocol = 'UNKNOWN_APPLICATION_PROTOCOL'
     }
 
-    if (server.ip && server.ip.broadcast) {network.direction = 'BROADCAST'}
-    else if (server.ip && server.ip.external) {network.direction = 'OUTBOUND'}
-    else if (client.ip && client.ip.external) {network.direction = 'INBOUND'}
+    if (target.ip && data.receiver.ip.broadcast)
+    {network.direction = 'BROADCAST'}
+    else if (target.ip && data.receiver.ip.external)
+    {
+      network.direction = 'OUTBOUND'
+      target.asset_id = null
+      target.mac = null
+    }
+    else if (principal.ip && data.sender.ip.external)
+    {
+      network.direction = 'INBOUND'
+      principal.asset_id = null
+      principal.mac = null
+    }
     //else {network.direction = 'UNKNOWN_DIRECTION'}
 
     return {
       principal: Object.assign(principal, data.principal),
       target: Object.assign(target, data.target),
-      network: Object.assign(network, data.network)
+      network: Object.assign(network, data.network),
+      additional
     }
   }
 
@@ -240,16 +218,15 @@ function ChronicleRemoteHelper()
     let types = ['~flow']
     switch (eventType)
     {
-      case 'DHCP_REQUEST':
-      case 'DHCP_RESPONSE':
-        types = types.concat(['~dhcp_request','~dhcp_response'])
+      case 'DHCP_REQUEST': case 'DHCP_RESPONSE':
+        types = types.concat(['~dhcp_request', '~dhcp_response'])
         break;
-      case 'DNS_REQUEST':
-      case 'DNS_RESPONSE':
-        types = types.concat(['~dns_request','~dns_response'])
+
+      case 'DNS_REQUEST': case 'DNS_RESPONSE':
+        types = types.concat(['~dns_request', '~dns_response'])
         break;
-      case 'HTTP_REQUEST':
-      case 'HTTP_RESPONSE':
+
+      case 'HTTP_REQUEST': case 'HTTP_RESPONSE':
         types = types.concat(['~http'])
         break;
     }
