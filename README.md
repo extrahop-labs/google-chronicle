@@ -1,18 +1,17 @@
 # Google Chronicle - Partner Ingest API Integration
 
-This integration utilizes mutliple triggers in order to decouple the capture of metadata from the work of sending events to Chronicle. This also allows for sending events to Chronicle in batches versus realtime streaming. While the former is possible, the load on the sensor is too great.
+This integration utilizes multiple triggers in order to decouple the capture of metadata from the work of sending events to Chronicle. This also allows for sending events to Chronicle in batches versus realtime streaming. While the former is possible, the load on the sensor is too great.
 
-## Triggers
-Both triggers utilize a hoisted helper function to simplify the experience for the user, and to create a modular solution where having multiple triggers capturing metadata in parallel across different use cases and/or wire events with a common format for collecting the necessary event data for Chronicle. 
+## capture/*.js
 
-#### capture.js
-Translates wire data event properties to Unified Data Model (UDM) event fields and puts them
-in the Session store. Each key is set to expire after 30 seconds to strike a balance between memory impact and batch size to be handled by the `remote.js` trigger. _This trigger can exist multiple times to further parallelize metadata extraction, provided none of the event types overlap._
+The triggers in the `capture` folder are scoped to realtime network events where minimal processing is performed to capture artifacts which satisfy the requirements of the Chronicle UDM as well as relevant properties for the `metadata` and `additional` event nouns. These triggers include a common routine at the end which packages the data into a standard Session Table `entry` with a 30 second expiration timer.
 
-#### remote.js
-Catches session keys expired in the previous 30 seconds and translates them into a batch of Chronicle events for a single POST to the `/v1/udmevents` API endpoint at roughly 30 second intervals. _This trigger should only exist once._
+## session/expire.js
+
+The trigger in the `session` folder is scoped to the single `SESSION_EXPIRE` event which is executed at approximately 30 second intervals to evaluate all of the Session Table `entries` which have expired during the previous ~30 second interval. All of these `entries` are then converted to Chronicle `events` and sent as a list to Chronicle in a single POST.
 
 ## ExtraHop Events
+
 The current version supports the ExtraHop events listed below with their corresponding Chronicle event types.
 
 | ExtraHop Event | Chronicle Event |
@@ -24,6 +23,7 @@ The current version supports the ExtraHop events listed below with their corresp
 | HTTP_RESPONSE | NETWORK_HTTP |
 
 ## Unified Data Model Properties for All Events
+
 This section highlights the common properties populated for all events sent to Chronicle from ExtraHop with example values. Individual ExtraHop events are outlined in the next section, with samples payloads. The following examples in this section were taken from an `HTTP_RESPONSE` ExtraHop event.
 
 #### Event metadata ([reference](https://cloud.google.com/chronicle/docs/unified-data-model/udm-field-list#event-metadata))
@@ -40,9 +40,10 @@ This section highlights the common properties populated for all events sent to C
 ```
 
 #### Noun metadata ([reference](https://cloud.google.com/chronicle/docs/unified-data-model/udm-field-list#noun-metadata))
-The word Noun is an overarching term used to represent the entities; `principal`, `src`, `target`, `intermediary`, `observer`, and `about`. These entities have common attributes, but represent different objects in an event.
 
-For all events sent by ExtraHop the appropriate nouns have the following properties included unless otherwise mentioned in the section below. For example, when `network.direction` is `INBOUND` or `OUTBOUND` the `principal` or `target` (respectively) will have their `asset_id` and `mac` properties removed as Chronicle does not represent router & gateway interfaces. The example below illustrates this with an `OUTBOUND` transaction over HTTP.
+The word Noun is an overarching term used to represent the entities: `principal`, `src`, `target`, `intermediary`, `observer`, and `about`. These entities have common attributes, but represent different objects in an event.
+
+For all events sent by ExtraHop the appropriate nouns have the following properties included unless otherwise mentioned in the section below. For example, when `network.direction` is `INBOUND` or `OUTBOUND` the `principal` or `target` (respectively) will have their `asset_id`, `mac`, and `hostname` properties removed as Chronicle does not represent router & gateway interfaces. The example below illustrates this with an `OUTBOUND` transaction over HTTP.
 
 ```
 "principal": {
@@ -55,12 +56,12 @@ For all events sent by ExtraHop the appropriate nouns have the following propert
 "target": {
   "ip": "1.2.3.4",
   "port": 443,
-  "hostname": 'web1.i.rx.tours',
-  "url": "https://web1.i.rx.tours/login.php"
+  "url": "https://www.extrahop.com/"
 }
 ```
 
 #### Network metadata ([reference](https://cloud.google.com/chronicle/docs/unified-data-model/udm-field-list#network-metadata))
+
 All of the event-specific fields are children of the `network` object as is shown in the sections below (ie. `network.http.method` for HTTP events). However, all events will include these base properties when sent from ExtraHop.
 
 ```
