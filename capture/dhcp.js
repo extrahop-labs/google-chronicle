@@ -8,12 +8,13 @@
  * 
  */
 const CHRONICLE_SESSION_PREFIX = 'chronicle',
+      CHRONICLE_EVENT_TYPE = 'NETWORK_DHCP',
       SENDER = Flow.sender,
       RECEIVER = Flow.receiver
 
-let GC = {principal:{}, target:{}, network:{}, additional:{}, event:{}}
+let Chronicle = {principal:{}, target:{}, network:{}, additional:{}}
 
-GC.event = {
+Chronicle.network.dhcp = {
   'opcode': null,
   'type': (/^DHCP([A-Z]+)$/.exec(DHCP.msgType || '') || [0,0])[1],
   'htype': 1,
@@ -43,39 +44,45 @@ switch (DHCP.msgType)
   case 'DHCPDECLINE':
   case 'DHCPRELEASE':
   case 'DHCPINFORM':
-    GC.event.opcode = 'BOOTREQUEST';
+    Chronicle.network.dhcp.opcode = 'BOOTREQUEST';
     break;
 
   case 'DHCPOFFER':
   case 'DHCPACK':
   case 'DHCPNAK':
-    GC.event.opcode = 'BOOTREPLY';
+    Chronicle.network.dhcp.opcode = 'BOOTREPLY';
     break;
 
   default:
-    GC.event.opcode = 'UNKNOWN_OPCODE'
-    GC.event.type = 'UNKNOWN_MESSAGE_TYPE'
+    Chronicle.network.dhcp.opcode = 'UNKNOWN_OPCODE'
+    Chronicle.network.dhcp.type = 'UNKNOWN_MESSAGE_TYPE'
 }
 
-if (DHCP.gwAddr) {GC.event.giaddr = `${DHCP.gwAddr}`}
+if (DHCP.gwAddr) {Chronicle.network.dhcp.giaddr = `${DHCP.gwAddr}`}
 
 switch (event)
 {
   case 'DHCP_REQUEST':
-    GC.network.sent_bytes = GC.network.received_bytes = DHCP.reqL2Bytes
+    if (SENDER.ipaddr) {Chronicle.network.dhcp.ciaddr = `${SENDER.ipaddr}`}
 
-    GC.additional = {
+    Chronicle.network.sent_bytes =
+      Chronicle.network.received_bytes = DHCP.reqL2Bytes
+
+    Chronicle.additional = {
       'param_req_list': DHCP.paramReqList,
       'vendor': DHCP.vendor
     }
 
-    if (DHCP.clientReqDelay) {GC.event.seconds = DHCP.clientReqDelay}
+    if (DHCP.clientReqDelay)
+    {Chronicle.network.dhcp.seconds = DHCP.clientReqDelay}
     break;
 
   case 'DHCP_RESPONSE':
-    GC.network.sent_bytes = GC.network.received_bytes = DHCP.rspL2Bytes
+    Chronicle.network.sent_bytes =
+      Chronicle.network.received_bytes = DHCP.rspL2Bytes
 
-    if (DHCP.offeredAddr) {GC.event.yiaddr = `${DHCP.offeredAddr}`}
+    if (DHCP.offeredAddr)
+    {Chronicle.network.dhcp.yiaddr = `${DHCP.offeredAddr}`}
     break;
 
   default: return
@@ -84,25 +91,34 @@ switch (event)
 let options = DHCP.options
 if (options.length)
 {
-  GC.event.options = []
-  for (var option of options)
+  Chronicle.network.dhcp.options = []
+  for (const option of options)
   {
-    GC.event.options.push({'code':option.code, 'data':`${option.payload}`})
+    Chronicle.network.dhcp.options.push({
+      'code': option.code,
+      'data': `${option.payload}`
+    })
 
     switch (option.code)
     {
-      case 12: GC.event.client_hostname = `${option.payload}`; break;
-      case 61: GC.event.client_identifier = `${option.payload}`; break;
-      case 67: GC.event.file = `${option.payload}`; break;
-      case 51: GC.event.lease_time_seconds = option.payload; break;
-      case 50: GC.event.requested_address = `${option.payload}`; break;
-      case 66: GC.event.sname = `${option.payload}`; break;
+      case 12:
+        Chronicle.network.dhcp.client_hostname = `${option.payload}`; break;
+      case 61:
+        Chronicle.network.dhcp.client_identifier = `${option.payload}`; break;
+      case 67:
+        Chronicle.network.dhcp.file = `${option.payload}`; break;
+      case 51:
+        Chronicle.network.dhcp.lease_time_seconds = option.payload; break;
+      case 50:
+        Chronicle.network.dhcp.requested_address = `${option.payload}`; break;
+      case 66:
+        Chronicle.network.dhcp.sname = `${option.payload}`; break;
     }
   }
 }
 
 /**
-* Creates a new Google Chronicle (GC) Session Table entry
+* Creates a new Google Chronicle Session Table entry
 *
 * Include this code at the bottom of all triggers running on CAPTURE events.
 */
@@ -114,13 +130,13 @@ const ChronicleSave = (() =>
           'expire': 30,
           'notify': true,
           'priority': Session.PRIORITY_HIGH
-        }
-
-  const senderIp = SENDER.ipaddr,
+        },
+        senderIp = SENDER.ipaddr,
         receiverIp = RECEIVER.ipaddr
 
-  let sessionData = {
-    'type': event,
+  return Session.add(sessionKey, {
+    'event': event,
+    'event_type': CHRONICLE_EVENT_TYPE,
     'timestamp': timestamp,
     'flow': Flow.id,
     'ipproto': Flow.ipproto,
@@ -143,12 +159,9 @@ const ChronicleSave = (() =>
       }),
       'port': RECEIVER.port
     },
-    'principal': GC.principal,
-    'target': GC.target,
-    'network': GC.network,
-    'additional': GC.additional,
-    'event': GC.event
-  }
-
-  return Session.add(sessionKey, sessionData, sessionOptions)
+    'principal': Chronicle.principal,
+    'target': Chronicle.target,
+    'network': Chronicle.network,
+    'additional': Chronicle.additional
+  }, sessionOptions)
 })()

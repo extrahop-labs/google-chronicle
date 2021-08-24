@@ -8,15 +8,16 @@
  * 
  */
 const CHRONICLE_SESSION_PREFIX = 'chronicle',
+      CHRONICLE_EVENT_TYPE = 'NETWORK_DNS',
       SENDER = Flow.sender,
       RECEIVER = Flow.receiver
 
-let GC = {principal:{}, target:{}, network:{}, additional:{}, event:{}}
+let Chronicle = {principal:{}, target:{}, network:{}, additional:{}}
 
 switch (event)
 {
   case 'DNS_REQUEST':
-    GC.event = {
+    Chronicle.network.dns = {
       'id': DNS.txId,
       'response': false,
       'opcode': DNS.opcodeNum,
@@ -24,14 +25,14 @@ switch (event)
       'questions': null
     }
 
-    GC.additional = {
+    Chronicle.additional = {
       'is_checking_disabled': DNS.isCheckingDisabled,
       'is_dga': DNS.isDGADomain || false
     }
     break;
 
   case 'DNS_RESPONSE':
-    GC.event = {
+    Chronicle.network.dns = {
       'authoritative': DNS.isAuthoritative,
       'id': DNS.txId,
       'response': true,
@@ -45,7 +46,7 @@ switch (event)
       'additional': null
     }
 
-    GC.additional = {
+    Chronicle.additional = {
       'is_authentic': DNS.isAuthenticData,
       'error': DNS.error || null,
       'error_code': DNS.errorNum || null,
@@ -55,10 +56,10 @@ switch (event)
     let answers = DNS.answers
     if (answers.length)
     {
-      GC.event.answers = []
+      Chronicle.network.dns.answers = []
       for (const answer of answers)
       {
-        GC.event.answers.push({
+        Chronicle.network.dns.answers.push({
           'class': 1,
           'data': `${answer.data}`,
           'name': answer.name,
@@ -75,16 +76,28 @@ switch (event)
 switch (DNS.opcodeNum)
 {
   case 0:
-    GC.event.questions = [{'name':DNS.qname, 'class':1, 'type':DNS.qtypeNum}]
+    Chronicle.network.dns.questions = [
+      {
+        'name': DNS.qname,
+        'class': 1,
+        'type':DNS.qtypeNum
+      }
+    ]
     break;
 
   case 5:
-    GC.event.questions = [{'name':DNS.zname, 'class':1, 'type':DNS.ztypeNum}]
+    Chronicle.network.dns.questions = [
+      {
+        'name': DNS.zname,
+        'class': 1,
+        'type': DNS.ztypeNum
+      }
+    ]
     break;
 }
 
 /**
-* Creates a new Google Chronicle (GC) Session Table entry
+* Creates a new Google Chronicle Session Table entry
 *
 * Include this code at the bottom of all triggers running on CAPTURE events.
 */
@@ -96,13 +109,13 @@ const ChronicleSave = (() =>
           'expire': 30,
           'notify': true,
           'priority': Session.PRIORITY_HIGH
-        }
-
-  const senderIp = SENDER.ipaddr,
+        },
+        senderIp = SENDER.ipaddr,
         receiverIp = RECEIVER.ipaddr
 
-  let sessionData = {
-    'type': event,
+  return Session.add(sessionKey, {
+    'event': event,
+    'event_type': CHRONICLE_EVENT_TYPE,
     'timestamp': timestamp,
     'flow': Flow.id,
     'ipproto': Flow.ipproto,
@@ -125,12 +138,9 @@ const ChronicleSave = (() =>
       }),
       'port': RECEIVER.port
     },
-    'principal': GC.principal,
-    'target': GC.target,
-    'network': GC.network,
-    'additional': GC.additional,
-    'event': GC.event
-  }
-
-  return Session.add(sessionKey, sessionData, sessionOptions)
+    'principal': Chronicle.principal,
+    'target': Chronicle.target,
+    'network': Chronicle.network,
+    'additional': Chronicle.additional
+  }, sessionOptions)
 })()

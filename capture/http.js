@@ -8,12 +8,13 @@
  * 
  */
 const CHRONICLE_SESSION_PREFIX = 'chronicle',
+      CHRONICLE_EVENT_TYPE = 'NETWORK_HTTP',
       SENDER = Flow.client,
       RECEIVER = Flow.server
 
-let GC = {principal:{}, target:{}, network:{}, additional:{}, event:{}}
+let Chronicle = {principal:{}, target:{}, network:{}, additional:{}}
 
-GC.event = {
+Chronicle.network.http = {
   'method': HTTP.method,
   'referral_url': HTTP.referer,
   'response_code': HTTP.statusCode,
@@ -25,14 +26,14 @@ const scheme = (HTTP.isEncrypted ? 'https' : 'http'),
       path = HTTP.path || '/',
       query = (HTTP.query ? `?${HTTP.query}` : '')
 
-GC.target.url = `${scheme}://${host}${path}${query}`
+Chronicle.target.url = `${scheme}://${host}${path}${query}`
 
-if (scheme === 'https') {GC.network.application_protocol = 'HTTPS'}
+if (scheme === 'https') {Chronicle.network.application_protocol = 'HTTPS'}
 
-GC.network.sent_bytes = HTTP.reqL2Bytes
-GC.network.received_bytes = HTTP.rspL2Bytes
+Chronicle.network.sent_bytes = HTTP.reqL2Bytes
+Chronicle.network.received_bytes = HTTP.rspL2Bytes
 
-GC.additional = {
+Chronicle.additional = {
   'title': HTTP.title,
   'is_encrypted': HTTP.isEncrypted,
   'content_type': HTTP.contentType,
@@ -43,7 +44,7 @@ GC.additional = {
 }
 
 /**
-* Creates a new Google Chronicle (GC) Session Table entry
+* Creates a new Google Chronicle Session Table entry
 *
 * Include this code at the bottom of all triggers running on CAPTURE events.
 */
@@ -55,13 +56,13 @@ const ChronicleSave = (() =>
           'expire': 30,
           'notify': true,
           'priority': Session.PRIORITY_HIGH
-        }
-
-  const senderIp = SENDER.ipaddr,
+        },
+        senderIp = SENDER.ipaddr,
         receiverIp = RECEIVER.ipaddr
 
-  let sessionData = {
-    'type': event,
+  return Session.add(sessionKey, {
+    'event': event,
+    'event_type': CHRONICLE_EVENT_TYPE,
     'timestamp': timestamp,
     'flow': Flow.id,
     'ipproto': Flow.ipproto,
@@ -84,12 +85,9 @@ const ChronicleSave = (() =>
       }),
       'port': RECEIVER.port
     },
-    'principal': GC.principal,
-    'target': GC.target,
-    'network': GC.network,
-    'additional': GC.additional,
-    'event': GC.event
-  }
-
-  return Session.add(sessionKey, sessionData, sessionOptions)
+    'principal': Chronicle.principal,
+    'target': Chronicle.target,
+    'network': Chronicle.network,
+    'additional': Chronicle.additional
+  }, sessionOptions)
 })()
