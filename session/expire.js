@@ -51,15 +51,6 @@ let Chronicle = []
 for (const key of Session.expiredKeys || [])
 {
   if (! SESSION_KEY_PATTERN.test(key.name)) {continue}
-
-  // const entry = parseSessionEntry(captureOffload(key.value))
-  // if (entry.metadata.product_event_type === 'SSL_OPEN')
-  // {
-  //   debug(JSON.stringify(entry))
-  //   continue
-  // }
-  // Chronicle.push(entry)
-
   Chronicle.push(parseSessionEntry(captureOffload(key.value)))
 }
 
