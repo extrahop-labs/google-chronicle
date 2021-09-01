@@ -10,7 +10,8 @@
 const CHRONICLE_SESSION_PREFIX = 'chronicle',
       CHRONICLE_EVENT_TYPE = 'NETWORK_DHCP',
       SENDER = Flow.sender,
-      RECEIVER = Flow.receiver
+      RECEIVER = Flow.receiver,
+      RECORDS = ['~flow', '~dhcp_request', '~dhcp_response']
 
 let Chronicle = {principal:{}, target:{}, network:{}, additional:{}}
 
@@ -137,6 +138,7 @@ const ChronicleSave = (() =>
   return Session.add(sessionKey, {
     'event': event,
     'event_type': CHRONICLE_EVENT_TYPE,
+    'record_types': RECORDS,
     'timestamp': timestamp,
     'flow': Flow.id,
     'ipproto': Flow.ipproto,

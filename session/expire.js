@@ -51,6 +51,15 @@ let Chronicle = []
 for (const key of Session.expiredKeys || [])
 {
   if (! SESSION_KEY_PATTERN.test(key.name)) {continue}
+
+  // const entry = parseSessionEntry(captureOffload(key.value))
+  // if (entry.metadata.product_event_type === 'SSL_OPEN')
+  // {
+  //   debug(JSON.stringify(entry))
+  //   continue
+  // }
+  // Chronicle.push(entry)
+
   Chronicle.push(parseSessionEntry(captureOffload(key.value)))
 }
 
@@ -80,6 +89,7 @@ debug(`Sent (${Chronicle.length}) events to Chronicle`)
  * @typedef SessionEntry
  * @property {String} event
  * @property {String} event_type
+ * @property {Array} record_types
  * @property {Number} timestamp
  * @property {String} flow
  * @property {String} ipproto
@@ -133,30 +143,12 @@ function captureOffload(entry)
 
 /**
  * @param {Number} timestamp
- * @param {String} event_type
  * @param {String} flow_id
+ * @param {Array} record_types
  * @returns {String}
  */
-function createDeepLink(timestamp, event_type, flow_id)
+function createDeepLink(timestamp, flow_id, record_types=['~flow'])
 {
-  let types = ['~flow']
-  switch (event_type)
-  {
-    case 'NETWORK_DHCP':
-      types = types.concat(['~dhcp_request', '~dhcp_response'])
-      break;
-
-    case 'NETWORK_DNS':
-      types = types.concat(['~dns_request', '~dns_response'])
-      break;
-
-    case 'NETWORK_HTTP':
-      types = types.concat(['~http'])
-      break;
-  }
-
-  types = types.map((type,i) => `r.types%5B${i}%5D=${type}`)
-
   const interval = (Math.trunc(timestamp / 1000))
   return [
     `https://${HOSTNAME}/extrahop/#/Records/create?delta_type`,
@@ -165,7 +157,7 @@ function createDeepLink(timestamp, event_type, flow_id)
       `[{"field":"flowId:string","operator":"=","operand":"${flow_id}"}]`
     ),
     'r.sort%5B0%5D.direction=desc&r.sort%5B0%5D.field=timestamp',
-    types.join('&'),
+    record_types.map((t,i) => `r.types%5B${i}%5D=${t}`).join('&'),
     'r.v=8.0',
     'return=clear'
   ].join('&')
@@ -242,7 +234,7 @@ function parseSessionEntry (entry)
     vendor_name: 'ExtraHop',
     product_name: 'RevealX',
     url_back_to_product: createDeepLink(
-      entry.timestamp, entry.event_type, entry.flow
+      entry.timestamp, entry.flow, entry.record_types
     )
   }
 
