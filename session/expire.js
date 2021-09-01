@@ -143,14 +143,15 @@ function createDeepLink(timestamp, flow_id, record_types=['~flow'])
   const interval = (Math.trunc(timestamp / 1000))
   return [
     `https://${HOSTNAME}/extrahop/#/Records/create?delta_type`,
-    `from=${interval - 1800}&interval_type=DT&until=${interval + 1800}`,
+    `from=${interval - 1800}&interval_type=DT`,
     'r.filter=' + myBase64.encode(
       `[{"field":"flowId:string","operator":"=","operand":"${flow_id}"}]`
     ),
     'r.sort%5B0%5D.direction=desc&r.sort%5B0%5D.field=timestamp',
     record_types.map((t,i) => `r.types%5B${i}%5D=${t}`).join('&'),
     'r.v=8.0',
-    'return=clear'
+    'return=clear',
+    `until=${interval + 1800}`
   ].join('&')
 }
 
