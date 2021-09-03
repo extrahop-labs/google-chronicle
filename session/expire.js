@@ -1,6 +1,11 @@
 /**
  * Google Chronicle - Partner Ingest API Integration (REMOTE)
  * 
+ * COPYRIGHT 2021 BY EXTRAHOP NETWORKS, INC.
+ *
+ * This file is subject to the terms and conditions defined in
+ * file 'LICENSE', which is part of this source code package.
+ * 
  * Catches all Session Table entries which have expired in the previous ~30s 
  * where the Entry Key matches SESSION_KEY_PATTERN. Each entry is translated 1:1
  * to a Chronicle event in UDM format then added to a list of events. Once all 

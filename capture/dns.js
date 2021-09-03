@@ -1,6 +1,11 @@
 /**
  * Google Chronicle - Partner Ingest API Integration (CAPTURE)
  * 
+ * COPYRIGHT 2021 BY EXTRAHOP NETWORKS, INC.
+ *
+ * This file is subject to the terms and conditions defined in
+ * file 'LICENSE', which is part of this source code package.
+ * 
  * This trigger translates wire data events to UDM event classes and puts them
  * in the Session store with the following session key pattern:
  * 
